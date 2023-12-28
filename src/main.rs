@@ -1,18 +1,15 @@
+use alloy_primitives::{Address, Bytes as aBytes};
 use anyhow::{Ok, Result};
-//use bytes::Bytes;
 use ethers_contract::BaseContract;
 use ethers_core::abi::parse_abi;
 use ethers_providers::{Http, Provider};
 use revm::{
     db::{CacheDB, EmptyDB, EthersDB},
-    primitives::{ExecutionResult, Output, TransactTo,  U256 as rU256},
+    primitives::{ExecutionResult, Output, TransactTo, U256 as rU256},
     Database, EVM,
 };
-use alloy_primitives::{Address, Bytes as aBytes};
-
 
 use std::{str::FromStr, sync::Arc};
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,15 +25,16 @@ async fn main() -> Result<()> {
 
     let slot = rU256::from(8);
     let value = ethersdb.storage(pool_address, slot).unwrap();
-    println!("STORAGE SLOT {:?}", value); // 0x658ccfc700000000000000003ad7bc5d31310000000005a1c24b83cb7d5730e3_U256
+    println!("STORAGE SLOT {:?} {:?}", slot, value); 
 
     let mut cache_db = CacheDB::new(EmptyDB::default());
     cache_db.insert_account_info(pool_address, acc_info);
-    cache_db.insert_account_storage(pool_address, slot, value).unwrap();
+    cache_db
+        .insert_account_storage(pool_address, slot, value)
+        .unwrap();
 
     let mut evm = EVM::new();
     evm.database(cache_db);
-
 
     let pool_contract = BaseContract::from(
         parse_abi(&[
@@ -45,10 +43,9 @@ async fn main() -> Result<()> {
     );
 
     let encoded = pool_contract.encode("getReserves", ())?;
-
     evm.env.tx.caller = Address::from_str("0x0000000000000000000000000000000000000000")?;
     evm.env.tx.transact_to = TransactTo::Call(pool_address);
-    evm.env.tx.data = aBytes::from(encoded.0); //fix this
+    evm.env.tx.data = aBytes::from(encoded.0);
     evm.env.tx.value = rU256::ZERO;
 
     let ref_tx = evm.transact_ref().unwrap();
@@ -61,21 +58,15 @@ async fn main() -> Result<()> {
         },
         _ => None,
     };
-    println!("ExecutionResult {:?}", value);
-    
+    println!("Execution Result: {:?}", value);
 
     let (reserve0, reserve1, ts): (u128, u128, u32) =
-    pool_contract.decode_output("getReserves", value.unwrap())?;
+        pool_contract.decode_output("getReserves", value.unwrap())?;
 
-println!("reserve0: {:?} reserve1: {:?} ts: {:?}", reserve0, reserve1, ts);
-/*
-incorrect reserves // fix Bytes conversion
-reserve0: 26595758638992079663331 reserve1: 64698252603697 ts: 1703727047
-2059679616694086841822200329157335
-3820476448603187030129672211629003
-2102866147
+    println!(
+        "reserve0: {:?} reserve1: {:?} timestamp: {:?}",
+        reserve0, reserve1, ts
+    );
 
-*/
     Ok(())
-
 }
